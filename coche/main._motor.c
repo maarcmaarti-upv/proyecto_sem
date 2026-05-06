@@ -57,7 +57,7 @@ static void mqtt_event_handler(void *handler_args,
     esp_mqtt_event_handle_t event = event_data;
 
     if (event->event_id == MQTT_EVENT_CONNECTED) {
-        ESP_LOGI(TAG, "MQTT CONECTADO ✅");
+        ESP_LOGI(TAG, "MQTT CONECTADO ");
         esp_mqtt_client_publish(event->client,
                                 "giirob/test",
                                 "ESP32 conectado",
