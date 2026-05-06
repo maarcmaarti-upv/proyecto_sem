@@ -1,103 +1,129 @@
-// MICRO-PROJECTE DE SEM -> MOTORET
-
-
-/*** file main.c ****/
-
 #include <stdio.h>
+#include <string.h>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "motor.h"
-#include "encoder.h"
+
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "nvs_flash.h"
+#include "esp_log.h"
+#include "esp_netif.h"
+
 #include "mqtt_client.h"
 
-esp_mqtt_client_handle_t client;
+static const char *TAG = "MQTT_UPV";
 
+/* -------------------------------------------------- */
+/* WiFi */
 
+#define WIFI_SSID      "UPVNET"
+#define WIFI_PASSWORD  "marcmarti"
 
-#define MOTOR_CONTROL_TASK_PRIORITY  3
-#define MOTOR_CONTROL_CYCLE_TIME_MS  500
+void wifi_init(void)
+{
+    esp_netif_init();
+    esp_event_loop_create_default();
+    esp_netif_create_default_wifi_sta();
 
-volatile float motor_power_percent = 100.0f;
-static portMUX_TYPE motor_access = portMUX_INITIALIZER_UNLOCKED;
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    esp_wifi_init(&cfg);
 
-static TaskHandle_t motor_control_task_handle = NULL;
+    wifi_config_t wifi_config = {
+        .sta = {
+            .ssid = WIFI_SSID,
+            .password = WIFI_PASSWORD,
+        }
+    };
 
-static void motor_control_task(void *pvParameters);
+    esp_wifi_set_mode(WIFI_MODE_STA);
+    esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
+    esp_wifi_start();
+    esp_wifi_connect();
 
-static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
-    
+    ESP_LOGI("WIFI", "Intentando conectar a la red WIFI...");
 }
 
-void mqtt_app_start(void) {
+/* -------------------------------------------------- */
+/* MQTT */
+
+static esp_mqtt_client_handle_t client;
+
+static void mqtt_event_handler(void *handler_args,
+                               esp_event_base_t base,
+                               int32_t event_id,
+                               void *event_data)
+{
+    esp_mqtt_event_handle_t event = event_data;
+
+    if (event->event_id == MQTT_EVENT_CONNECTED) {
+        ESP_LOGI(TAG, "MQTT CONECTADO ✅");
+        esp_mqtt_client_publish(event->client,
+                                "giirob/test",
+                                "ESP32 conectado",
+                                0, 0, 0);
+    }
+}
+
+void mqtt_init(void)
+{
     esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = "mqtt://tu_servidor_mqtt.com", // O la IP de tu PC
+        .broker.address.uri = "mqtt://mqtt.dsic.upv.es",
+        .credentials.username = "giirob",
+        .credentials.authentication.password = "UPV2024"
     };
+
     client = esp_mqtt_client_init(&mqtt_cfg);
-    esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
+    esp_mqtt_client_register_event(client,
+                                   ESP_EVENT_ANY_ID,
+                                   mqtt_event_handler,
+                                   NULL);
     esp_mqtt_client_start(client);
 }
 
+/* -------------------------------------------------- */
+/* Tarea publicadora */
+
+void mqtt_publish_task(void *pvParameters)
+{
+    int counter = 0;
+    char msg[32];
+
+    for (;;) {
+        sprintf(msg, "Mensaje %d", counter++);
+        esp_mqtt_client_publish(client,
+                                "giirob/test",
+                                msg,
+                                0,
+                                0,
+                                0);
+
+        printf("Publicado: %s\n", msg);
+
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+/* -------------------------------------------------- */
+
 void app_main(void)
 {
-    mqtt_app_start();
-    motor_init();
-    encoder_start();
+    ESP_LOGI("MAIN", "app_main arrancando");
+
+    nvs_flash_init();
+    wifi_init();
+
+    /* Damos tiempo REAL al WiFi */
+    vTaskDelay(pdMS_TO_TICKS(15000));
+
+    mqtt_init();
 
     xTaskCreate(
-        motor_control_task,
-        "motor_control_task",
+        mqtt_publish_task,
+        "mqtt_publish_task",
         2048,
         NULL,
-        MOTOR_CONTROL_TASK_PRIORITY,
-        &motor_control_task_handle
+        5,
+        NULL
     );
-
-    for (;;)
-    {
-        vTaskDelay(300 / portTICK_PERIOD_MS);
-
-        taskENTER_CRITICAL(&motor_access);
-        motor_power_percent -= 0.3f;
-        if (motor_power_percent < 0.0f)
-        {
-            motor_power_percent = 100.0f;
-        }
-        taskEXIT_CRITICAL(&motor_access);
-    }
 }
-
-void motor_control_task(void *pvParameters)
-{
-    float power;
-    float rpm;
-    char rpm_str[16];
-    
-    int pulses = encoder_get_pulses();
-    printf("Pulsos en el periodo: %d\n", pulses);
-
-
-    for (;;)
-    {
-        taskENTER_CRITICAL(&motor_access);
-        power = motor_power_percent;
-        taskEXIT_CRITICAL(&motor_access);
-
-        motor_set_power(power);
-        rpm = encoder_get_rpm(); // [cite: 9]
-
-        // 1. Convertir float a string
-        sprintf(rpm_str, "%.2f", rpm);
-
-        // 2. Publicar por MQTT
-        // Argumentos: (cliente, topic, data, tamaño, qos, retain)
-        esp_mqtt_client_publish(client, "/proyecto/motor/rpm", rpm_str, 0, 1, 0);
-
-        printf("Potencia: %.1f %% | Velocidad: %.2f RPM (Enviado a MQTT)\n", power, rpm);
-
-        vTaskDelay(MOTOR_CONTROL_CYCLE_TIME_MS / portTICK_PERIOD_MS); // 
-    }
-}
-
-/*** End of file ****/
-
-
