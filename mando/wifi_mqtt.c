@@ -5,12 +5,12 @@
 #include "mqtt_client.h"
 #include "nvs_flash.h"
 
-#define WIFI_SSID "MOVISTAR_B780"
-#define WIFI_PASS "rvp3M7w4tPyyvErv97p3"
+#define WIFI_SSID "MOVISTAR_B780" // Nombre del wifi
+#define WIFI_PASS "rvp3M7w4tPyyvErv97p3" // contraseña de wifi
 
-#define MQTT_URI  "mqtt://broker.hivemq.com"
-#define MQTT_USER "giirob"
-#define MQTT_PASS "UPV2024"
+#define MQTT_URI  "mqtt://broker.hivemq.com" // broker del mqtt
+#define MQTT_USER "giirob" // usuario del mqtt
+#define MQTT_PASS "UPV2024" // contraseña del usuario del mqtt
 
 static const char *TAG = "WIFI_MQTT";
 
