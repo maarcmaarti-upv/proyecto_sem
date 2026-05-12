@@ -1,74 +1,103 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/gpio.h"
-#include "esp_timer.h"
+#include "pot.h"
+#include "mqtt_client.h"
+#include "wifi_mqtt.h"
 
-#define HALL_PIN GPIO_NUM_4
+// Prioridades
+#define POT_READ_TASK_PRIORITY      3
+#define POT_PUBLISH_TASK_PRIORITY   3
 
-// PCNT
-static volatile int pulse_count = 0;
-static volatile int64_t last_time = 0;
+// Periodos
+#define POT_READ_CYCLE_MS           200
+#define POT_PUBLISH_CYCLE_MS        500
 
-// Buffer para media móvil
-#define N 5
-static int rpm_buffer[N] = {0};
-static int idx = 0;
-static int sum = 0;
+// Variable compartida
+volatile float pot_value = 0.0f;
 
-// ISR con debounce temporal
-static void IRAM_ATTR hall_isr_handler(void* arg)
+// Mutex
+static portMUX_TYPE pot_access = portMUX_INITIALIZER_UNLOCKED;
+
+// Prototipos
+static void pot_read_task(void *pvParameters);
+static void pot_publish_task(void *pvParameters);
+
+// ------------------------------------------------------
+// MAIN
+// ------------------------------------------------------
+void app_main(void)
 {
-    int64_t now = esp_timer_get_time(); // microsegundos
+    // Iniciar WiFi (MQTT se iniciará automáticamente al obtener IP)
+    wifi_init();
 
-    // debounce de 5 ms
-    if (now - last_time > 5000) {
-        pulse_count++;
-        last_time = now;
+    // Inicializar potenciómetro
+    pot_init();
+
+    // Crear tareas
+    xTaskCreate(pot_read_task,
+                "pot_read_task",
+                2048,
+                NULL,
+                POT_READ_TASK_PRIORITY,
+                NULL);
+
+    xTaskCreate(pot_publish_task,
+                "pot_publish_task",
+                4096,   // más stack para evitar overflow
+                NULL,
+                POT_PUBLISH_TASK_PRIORITY,
+                NULL);
+}
+
+// ------------------------------------------------------
+// TAREA DE LECTURA DEL POTENCIÓMETRO
+// ------------------------------------------------------
+static void pot_read_task(void *pvParameters)
+{
+    for (;;) {
+        float lectura = pot_read_raw();
+
+        taskENTER_CRITICAL(&pot_access);
+        pot_value = lectura;
+        taskEXIT_CRITICAL(&pot_access);
+
+        vTaskDelay(pdMS_TO_TICKS(POT_READ_CYCLE_MS));
     }
 }
 
-void app_main(void)
+// ------------------------------------------------------
+// TAREA DE PUBLICACIÓN MQTT
+// ------------------------------------------------------
+static void pot_publish_task(void *pvParameters)
 {
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << HALL_PIN),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_ANYEDGE
-    };
+    char pot_str[16];
 
-    gpio_config(&io_conf);
+    for (;;) {
 
-    gpio_install_isr_service(0);
-    gpio_isr_handler_add(HALL_PIN, hall_isr_handler, NULL);
+        // Si MQTT aún no está inicializado, esperar
+        if (client == NULL) {
+            vTaskDelay(pdMS_TO_TICKS(500));
+            continue;
+        }
 
-    printf("U18301 Hall RPM iniciado\n");
+        float valor;
 
-    while (1) {
+        taskENTER_CRITICAL(&pot_access);
+        valor = pot_value;
+        taskEXIT_CRITICAL(&pot_access);
 
-        // Reiniciar contador
-        pulse_count = 0;
+        sprintf(pot_str, "%.2f", valor);
 
-        // Ventana de 1 segundo
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        esp_mqtt_client_publish(client,
+                                "proyecto/pot/valor",
+                                pot_str,
+                                0,
+                                1,
+                                0);
 
-        // Copia segura del contador
-        int pulses = pulse_count;
+        printf("Potenciómetro: %.2f (MQTT)\n", valor);
 
-        // RPM
-        int rpm = pulses * 60;
-
-        // filtro
-        sum -= rpm_buffer[idx];
-        rpm_buffer[idx] = rpm;
-        sum += rpm_buffer[idx];
-
-        idx = (idx + 1) % N;
-
-        int rpm_filtrado = sum / N;
-
-        printf("Pulsos: %d | RPM: %d | RPM Filtrado: %d\n",
-               pulses, rpm, rpm_filtrado);
+        vTaskDelay(pdMS_TO_TICKS(POT_PUBLISH_CYCLE_MS));
     }
 }
