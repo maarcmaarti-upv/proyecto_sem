@@ -1,27 +1,52 @@
 #include "wifi_mqtt.h"
-#include <stdio.h>
-#include <string.h>
-#include "esp_system.h"
-#include "esp_netif.h"
-#include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "nvs_flash.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
+#include "esp_log.h"
 #include "mqtt_client.h"
+#include "nvs_flash.h"
 
-#define WIFI_SSID "iPhone" //tu wifi
-#define WIFI_PASS "trufanala2" //tu contraseña
+#define WIFI_SSID "MOVISTAR_B780"
+#define WIFI_PASS "rvp3M7w4tPyyvErv97p3"
 
-// configuración del mqtt explorer
 #define MQTT_URI  "mqtt://broker.hivemq.com"
 #define MQTT_USER "giirob"
 #define MQTT_PASS "UPV2024"
 
 static const char *TAG = "WIFI_MQTT";
 
-// ---------------- WIFI ----------------
+esp_mqtt_client_handle_t client = NULL;
+
+// -----------------------------
+// EVENT HANDLER
+// -----------------------------
+static void wifi_event_handler(void* arg, esp_event_base_t event_base,
+                               int32_t event_id, void* event_data)
+{
+    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+        ESP_LOGI(TAG, "Conectando WiFi...");
+        esp_wifi_connect();
+    }
+    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        ESP_LOGW(TAG, "WiFi desconectado, reintentando...");
+        esp_wifi_connect();
+    }
+    else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        ESP_LOGI(TAG, "WiFi OK, iniciando MQTT...");
+
+        esp_mqtt_client_config_t mqtt_cfg = {
+            .broker.address.uri = MQTT_URI,
+            .credentials.username = MQTT_USER,
+            .credentials.authentication.password = MQTT_PASS,
+        };
+
+        client = esp_mqtt_client_init(&mqtt_cfg);
+        esp_mqtt_client_start(client);
+    }
+}
+
+// -----------------------------
+// WIFI INIT
+// -----------------------------
 void wifi_init(void)
 {
     nvs_flash_init();
@@ -31,6 +56,19 @@ void wifi_init(void)
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     esp_wifi_init(&cfg);
+
+    // Registrar eventos
+    esp_event_handler_instance_register(WIFI_EVENT,
+                                        ESP_EVENT_ANY_ID,
+                                        &wifi_event_handler,
+                                        NULL,
+                                        NULL);
+
+    esp_event_handler_instance_register(IP_EVENT,
+                                        IP_EVENT_STA_GOT_IP,
+                                        &wifi_event_handler,
+                                        NULL,
+                                        NULL);
 
     wifi_config_t wifi_config = {
         .sta = {
@@ -42,24 +80,4 @@ void wifi_init(void)
     esp_wifi_set_mode(WIFI_MODE_STA);
     esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
     esp_wifi_start();
-    esp_wifi_connect();
-
-    ESP_LOGI(TAG, "Conectando a WiFi...");
-}
-
-// ---------------- MQTT ----------------
-esp_mqtt_client_handle_t mqtt_init(void)
-{
-    esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = MQTT_URI,
-        .credentials.username = MQTT_USER,
-        .credentials.authentication.password = MQTT_PASS,
-    };
-
-    esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
-    esp_mqtt_client_start(client);
-
-    ESP_LOGI(TAG, "MQTT iniciado");
-
-    return client;
 }
