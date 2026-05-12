@@ -1,5 +1,6 @@
 #include "pot.h"
 #include "esp_adc/adc_oneshot.h"
+#include "mqtt_client.h"
 
 #define POT_ADC_UNIT    ADC_UNIT_1
 #define POT_CHANNEL     ADC_CHANNEL_3   // GPIO4
