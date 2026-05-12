@@ -23,9 +23,7 @@ static portMUX_TYPE pot_access = portMUX_INITIALIZER_UNLOCKED;
 static void pot_read_task(void *pvParameters);
 static void pot_publish_task(void *pvParameters);
 
-// ------------------------------------------------------
 // MAIN
-// ------------------------------------------------------
 void app_main(void)
 {
     // Iniciar WiFi (MQTT se iniciará automáticamente al obtener IP)
@@ -50,9 +48,7 @@ void app_main(void)
                 NULL);
 }
 
-// ------------------------------------------------------
 // TAREA DE LECTURA DEL POTENCIÓMETRO
-// ------------------------------------------------------
 static void pot_read_task(void *pvParameters)
 {
     for (;;) {
@@ -66,16 +62,14 @@ static void pot_read_task(void *pvParameters)
     }
 }
 
-// ------------------------------------------------------
 // TAREA DE PUBLICACIÓN MQTT
-// ------------------------------------------------------
 static void pot_publish_task(void *pvParameters)
 {
     char pot_str[16];
 
     for (;;) {
 
-        // Si MQTT aún no está inicializado, esperar
+        // Si MQTT aún no está inicializado -> esperar
         if (client == NULL) {
             vTaskDelay(pdMS_TO_TICKS(500));
             continue;
@@ -88,7 +82,7 @@ static void pot_publish_task(void *pvParameters)
         taskEXIT_CRITICAL(&pot_access);
 
         sprintf(pot_str, "%.2f", valor);
-
+        // función de publicar
         esp_mqtt_client_publish(client,
                                 "proyecto/pot/valor",
                                 pot_str,
