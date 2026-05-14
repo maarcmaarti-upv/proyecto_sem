@@ -12,6 +12,8 @@
 
 #include "mqtt_client.h"
 
+#include "motor.h
+
 static const char *TAG = "MQTT_UPV";
 
 /* -------------------------------------------------- */
@@ -56,12 +58,33 @@ static void mqtt_event_handler(void *handler_args,
 {
     esp_mqtt_event_handle_t event = event_data;
 
-    if (event->event_id == MQTT_EVENT_CONNECTED) {
+    switch (event->event_id) {
+    case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT CONECTADO ");
-        esp_mqtt_client_publish(event->client,
-                                "giirob/test",
-                                "ESP32 conectado",
-                                0, 0, 0);
+        // Nos suscribimos al topic del potenciómetro del mando.
+        esp_mqtt_client_subscribe(event->client, "proyecto/pot/valor", 1);
+        break;
+
+    case MQTT_EVENT_DATA: {
+        // Solo actuamos si el topic es el esperado
+        if (strncmp(event->topic, "proyecto/pot/valor", event->topic_len) == 0) {
+            char valor_str[16];
+            size_t len = event->data_len;
+            if (len > 15) len = 15;
+            memcpy(valor_str, event->data, len);
+            valor_str[len] = '\0';
+
+            float valor = atof(valor_str); // Convierte el string a float
+            ESP_LOGI(TAG, "Potencia recibida: %.2f", valor);
+
+            // Aplicamos ese valor al motor
+            motor_set_power(valor);
+        }
+        break;
+      }
+
+    default:
+        break;
     }
 }
 
@@ -81,28 +104,6 @@ void mqtt_init(void)
     esp_mqtt_client_start(client);
 }
 
-/* -------------------------------------------------- */
-/* Tarea publicadora */
-
-void mqtt_publish_task(void *pvParameters)
-{
-    int counter = 0;
-    char msg[32];
-
-    for (;;) {
-        sprintf(msg, "Mensaje %d", counter++);
-        esp_mqtt_client_publish(client,
-                                "giirob/test",
-                                msg,
-                                0,
-                                0,
-                                0);
-
-        printf("Publicado: %s\n", msg);
-
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-}
 
 /* -------------------------------------------------- */
 
@@ -113,17 +114,16 @@ void app_main(void)
     nvs_flash_init();
     wifi_init();
 
-    /* Damos tiempo REAL al WiFi */
+    
     vTaskDelay(pdMS_TO_TICKS(15000));
 
     mqtt_init();
 
-    xTaskCreate(
-        mqtt_publish_task,
-        "mqtt_publish_task",
-        2048,
-        NULL,
-        5,
-        NULL
-    );
+    // Inicializamos el motor
+    motor_init();
+
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        
+    }
 }
