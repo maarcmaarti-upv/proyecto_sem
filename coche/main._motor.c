@@ -15,8 +15,8 @@ static const char *TAG = "MQTT_UPV";
 /* -------------------------------------------------- */
 /* WiFi */
 
-#define WIFI_SSID      "UPVNET"
-#define WIFI_PASSWORD  "marcmarti"
+#define WIFI_SSID      "MOVISTAR_B780"
+#define WIFI_PASSWORD  "rvp3M7w4tPyyvErv97p3"
 
 void wifi_init(void)
 {
@@ -89,7 +89,7 @@ static void mqtt_event_handler(void *handler_args,
 void mqtt_init(void)
 {
     esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = "mqtt://mqtt.dsic.upv.es",
+        .broker.address.uri = "mqtt://broker.hivemq.com",
         .credentials.username = "giirob",
         .credentials.authentication.password = "UPV2024"
     };
