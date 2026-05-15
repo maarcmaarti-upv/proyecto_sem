@@ -10,7 +10,7 @@
 
 // Parámetros del PWM
 #define MOTOR_PWM_TIMER      LEDC_TIMER_0
-#define MOTOR_PWM_MODE       LEDC_HIGH_SPEED_MODE
+#define MOTOR_PWM_MODE       LEDC_LOW_SPEED_MODE
 #define MOTOR_PWM_CHANNEL    LEDC_CHANNEL_0
 #define MOTOR_PWM_FREQ       5000             // Frecuencia PWM, por ejemplo 5 kHz
 #define MOTOR_PWM_RES        LEDC_TIMER_10_BIT // Resolución de 10 bits (0-1023)
