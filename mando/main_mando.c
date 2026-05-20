@@ -12,6 +12,8 @@
 #include "wifi_mqtt.h"
 #include <string.h>
 
+extern esp_mqtt_client_t client;
+
 
 // Prioridades
 #define POT_READ_TASK_PRIORITY      3
