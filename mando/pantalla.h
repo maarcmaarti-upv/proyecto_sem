@@ -1,16 +1,22 @@
-#ifndef LCD_I2C_H
-#define LCD_I2C_H
+#ifndef PANTALLA_LCD_H
+#define PANTALLA_LCD_H
 
-#include "driver/i2c.h"
-#include <stdint.h>
+#include "driver/gpio.h"
 
-#define LCD_I2C_ADDR 0x27
-#define LCD_COLS 16
-#define LCD_ROWS 2
+// Definición de pines (ajusten según su cableado en el ESP32)
+// Definición de pines para ESP32-S3
+#define LCD_RS_GPIO    GPIO_NUM_1   // Pin RS
+#define LCD_E_GPIO     GPIO_NUM_2   // Pin Enable
+#define LCD_D4_GPIO    GPIO_NUM_4   // Pin D4
+#define LCD_D5_GPIO    GPIO_NUM_5   // Pin D5
+#define LCD_D6_GPIO    GPIO_NUM_6   // Pin D6
+#define LCD_D7_GPIO    GPIO_NUM_7   // Pin D7
 
+// Funciones principales
 void lcd_init(void);
+void lcd_send_cmd(uint8_t cmd);
+void lcd_send_data(uint8_t data);
+void lcd_send_string(char *str);
+void lcd_put_cur(int row, int col);
 void lcd_clear(void);
-void lcd_set_cursor(uint8_t col, uint8_t row);
-void lcd_print(const char *str);
-
 #endif
