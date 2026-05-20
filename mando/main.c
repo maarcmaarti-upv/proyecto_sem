@@ -165,7 +165,7 @@ void task_display_rpm(void *pv)
 {
     lcd_clear();
     lcd_set_cursor(0, 0);
-    lcd_print("RPM recibidos:");
+    lcd_print(" RPM recibidos:");
 
     while (1) {
         int rpm;
@@ -174,14 +174,20 @@ void task_display_rpm(void *pv)
         rpm = rpm_recibido;
         taskEXIT_CRITICAL(&mux);
 
+        // LIMPIAR LA LÍNEA 1
+        lcd_set_cursor(0, 1);
+        lcd_print("                ");  // 16 espacios
+
+        // IMPRIMIR EL NUEVO VALOR
         lcd_set_cursor(0, 1);
         char buffer[16];
-        sprintf(buffer, "%d    ", rpm);
+        sprintf(buffer, "%d", rpm);
         lcd_print(buffer);
 
         vTaskDelay(pdMS_TO_TICKS(300));
     }
 }
+
 
 // --------------------------------------------------
 // MAIN
