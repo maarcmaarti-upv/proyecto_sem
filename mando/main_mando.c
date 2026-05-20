@@ -2,6 +2,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "pot.h"
+#include "pantalla.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "nvs_flash.h"
