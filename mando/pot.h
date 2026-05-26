@@ -5,7 +5,7 @@
     @author  Grupo PCNT
     @version V0.4
     @date    2026-05-26
-    @brief   Librería para la lectura limpia del potenciómetro usando tipos fijos
+    @brief   Template de cabecera para el módulo del potenciómetro
 */
 
 /* Define to prevent recursive inclusion -------------------------------------*/
@@ -17,7 +17,6 @@
 #endif
 
 /* Includes ------------------------------------------------------------------*/
-#include <stdint.h>
 
 /* Exported types ------------------------------------------------------------*/
 
@@ -26,12 +25,12 @@
 /* Exported macro ------------------------------------------------------------*/
 
 /* Exported functions --------------------------------------------------------*/ 
+int pot_read_raw(void);
 void pot_init(void);
-int32_t pot_read_raw(void);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* POT_H */
-/*** End of file ***/
+#endif
+/*** End of file **************************************************************/
