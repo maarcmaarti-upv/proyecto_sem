@@ -1,5 +1,14 @@
-/*** file main.c ***/
+/**
+    Copyright (C) 2025 The Sistemas Empotrados subject at UPV
+    
+    @file    main_mando.c
+    @author  Grupo PCNT
+    @version V0.4
+    @date    2026-05-26
+    @brief   Módulo principal de control de telemetría por MQTT y FreeRTOS
+*/
 
+/* Includes ------------------------------------------------------------------*/
 #include <stdio.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
@@ -14,16 +23,66 @@
 #include "pot.h"
 #include "lcd_i2c.h"
 
-static const char *TAG = "MQTT_UPV";
+/* Private typedef -----------------------------------------------------------*/
 
-// --------------------------------------------------
-// WiFi
-// --------------------------------------------------
-
+/* Private define ------------------------------------------------------------*/
 #define WIFI_SSID      "MOVISTAR_B780"
 #define WIFI_PASSWORD  "rvp3M7w4tPyyvErv97p3"
 
-void wifi_init(void)
+/* Private macro -------------------------------------------------------------*/
+
+/* Private variables ---------------------------------------------------------*/
+static const char *TAG = "MQTT_UPV";
+
+esp_mqtt_client_handle_t client = NULL;
+
+static int pot_value = 0;       /* Valor leído del ADC */
+static int rpm_recibido = 0;    /* Valor recibido por MQTT */
+
+static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+
+/* Private function prototypes -----------------------------------------------*/
+static void wifi_init(void);
+static void mqtt_init(void);
+static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data);
+static void task_pot_read(void *pv);
+static void task_pot_publish(void *pv);
+static void task_display_rpm(void *pv);
+
+/* Exported functions --------------------------------------------------------*/
+
+/**
+    @brief  Punto de entrada de la aplicación firmware (FreeRTOS root task)
+*/
+void app_main(void)
+{
+    ESP_LOGI("MAIN", "app_main arrancando");
+
+    nvs_flash_init();
+    wifi_init();
+
+    vTaskDelay(pdMS_TO_TICKS(15000));   /* Sincronización de arranque */
+
+    mqtt_init();
+    pot_init();
+    lcd_init();
+    lcd_clear();
+
+    xTaskCreate(task_pot_read,    "task_pot_read",    2048, NULL, 4, NULL);
+    xTaskCreate(task_pot_publish, "task_pot_publish", 2048, NULL, 3, NULL);
+    xTaskCreate(task_display_rpm, "task_display_rpm", 2048, NULL, 3, NULL);
+
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+/* Private functions ---------------------------------------------------------*/
+
+/**
+    @brief  Inicializa la pila de red y conecta la estación WiFi interna
+*/
+static void wifi_init(void)
 {
     esp_netif_init();
     esp_event_loop_create_default();
@@ -47,18 +106,25 @@ void wifi_init(void)
     ESP_LOGI("WIFI", "Intentando conectar a la red WIFI...");
 }
 
-// --------------------------------------------------
-// MQTT
-// --------------------------------------------------
+/**
+    @brief  Configura las credenciales y arranca el demonio cliente de MQTT
+*/
+static void mqtt_init(void)
+{
+    esp_mqtt_client_config_t mqtt_cfg = {
+        .broker.address.uri = "mqtt://broker.hivemq.com",
+        .credentials.username = "giirob",
+        .credentials.authentication.password = "UPV2024"
+    };
 
-esp_mqtt_client_handle_t client = NULL;
+    client = esp_mqtt_client_init(&mqtt_cfg);
+    esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
+    esp_mqtt_client_start(client);
+}
 
-// Variables globales
-static int pot_value = 0;       // leído del ADC
-static int rpm_recibido = 0;    // recibido por MQTT
-
-static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
-
+/**
+    @brief  Manejador de eventos asíncronos para subscripciones e hilos MQTT
+*/
 static void mqtt_event_handler(void *handler_args,
                                esp_event_base_t base,
                                int32_t event_id,
@@ -68,60 +134,39 @@ static void mqtt_event_handler(void *handler_args,
 
     switch (event->event_id) {
 
-        case MQTT_EVENT_CONNECTED:
-            ESP_LOGI(TAG, "MQTT CONECTADO");
+    case MQTT_EVENT_CONNECTED:
+        ESP_LOGI(TAG, "MQTT CONECTADO");
+        esp_mqtt_client_subscribe(event->client, "proyecto/sem/rpm/valor", 1);
+        break;
 
-            // Suscribirse al topic donde recibimos RPM
-            esp_mqtt_client_subscribe(event->client,
-                                      "proyecto/sem/rpm/valor",
-                                      1);
-            break;
+    case MQTT_EVENT_DATA:
+        if (strncmp(event->topic, "proyecto/sem/rpm/valor", event->topic_len) == 0) {
 
-        case MQTT_EVENT_DATA:
-            if (strncmp(event->topic, "proyecto/sem/rpm/valor", event->topic_len) == 0) {
+            char valor_str[16];
+            size_t len = event->data_len;
+            if (len > 15) len = 15;
+            memcpy(valor_str, event->data, len);
+            valor_str[len] = '\0';
 
-                char valor_str[16];
-                size_t len = event->data_len;
-                if (len > 15) len = 15;
-                memcpy(valor_str, event->data, len);
-                valor_str[len] = '\0';
+            int rpm = atoi(valor_str);
 
-                int rpm = atoi(valor_str);
+            taskENTER_CRITICAL(&mux);
+            rpm_recibido = rpm;
+            taskEXIT_CRITICAL(&mux);
 
-                taskENTER_CRITICAL(&mux);
-                rpm_recibido = rpm;
-                taskEXIT_CRITICAL(&mux);
+            ESP_LOGI(TAG, "RPM recibido = %d", rpm);
+        }
+        break;
 
-                ESP_LOGI(TAG, "RPM recibido = %d", rpm);
-            }
-            break;
-
-        default:
-            break;
+    default:
+        break;
     }
 }
 
-void mqtt_init(void)
-{
-    esp_mqtt_client_config_t mqtt_cfg = {
-        .broker.address.uri = "mqtt://broker.hivemq.com",
-        .credentials.username = "giirob",
-        .credentials.authentication.password = "UPV2024"
-    };
-
-    client = esp_mqtt_client_init(&mqtt_cfg);
-    esp_mqtt_client_register_event(client,
-                                   ESP_EVENT_ANY_ID,
-                                   mqtt_event_handler,
-                                   NULL);
-    esp_mqtt_client_start(client);
-}
-
-// --------------------------------------------------
-// TAREAS DEL POTENCIÓMETRO
-// --------------------------------------------------
-
-void task_pot_read(void *pv)
+/**
+    @brief  Tarea encargada de muestrear cíclicamente el potenciómetro hardware
+*/
+static void task_pot_read(void *pv)
 {
     while (1) {
         int lectura = pot_read_raw();
@@ -134,7 +179,10 @@ void task_pot_read(void *pv)
     }
 }
 
-void task_pot_publish(void *pv)
+/**
+    @brief  Tarea encargada de empaquetar y publicar el valor analógico por MQTT
+*/
+static void task_pot_publish(void *pv)
 {
     char msg[16];
     int valor;
@@ -146,22 +194,16 @@ void task_pot_publish(void *pv)
 
         sprintf(msg, "%d", valor);
 
-        esp_mqtt_client_publish(client,
-                                "proyecto/sem/pot/valor",
-                                msg,
-                                0,
-                                1,
-                                0);
+        esp_mqtt_client_publish(client, "proyecto/sem/pot/valor", msg, 0, 1, 0);
 
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
 
-// --------------------------------------------------
-// TAREA DE PANTALLA
-// --------------------------------------------------
-
-void task_display_rpm(void *pv)
+/**
+    @brief  Tarea encargada de actualizar de forma síncrona el panel LCD 16x2
+*/
+static void task_display_rpm(void *pv)
 {
     lcd_clear();
     lcd_set_cursor(0, 0);
@@ -174,11 +216,9 @@ void task_display_rpm(void *pv)
         rpm = rpm_recibido;
         taskEXIT_CRITICAL(&mux);
 
-        // LIMPIAR LA LÍNEA 1
         lcd_set_cursor(0, 1);
-        lcd_print("                ");  // 16 espacios
+        lcd_print("                ");
 
-        // IMPRIMIR EL NUEVO VALOR
         lcd_set_cursor(0, 1);
         char buffer[16];
         sprintf(buffer, "%d", rpm);
@@ -188,35 +228,4 @@ void task_display_rpm(void *pv)
     }
 }
 
-
-// --------------------------------------------------
-// MAIN
-// --------------------------------------------------
-
-void app_main(void)
-{
-    ESP_LOGI("MAIN", "app_main arrancando");
-
-    nvs_flash_init();
-    wifi_init();
-
-    vTaskDelay(pdMS_TO_TICKS(15000));   // Igual que tu ejemplo
-
-    mqtt_init();
-    pot_init();
-    lcd_init();
-    lcd_clear();
-
-    // TAREAS DEL POTENCIÓMETRO
-    xTaskCreate(task_pot_read,    "task_pot_read",    2048, NULL, 4, NULL);
-    xTaskCreate(task_pot_publish, "task_pot_publish", 2048, NULL, 3, NULL);
-
-    // TAREA DE PANTALLA
-    xTaskCreate(task_display_rpm, "task_display_rpm", 2048, NULL, 3, NULL);
-
-    while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-}
-
-/*** End of file ***/
+/* End of file ****************************************************************/
