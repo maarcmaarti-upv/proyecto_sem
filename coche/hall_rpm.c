@@ -60,7 +60,7 @@ void hall_rpm_init(void)
     pcnt_unit_config(&pcnt_config);
 
     /* Filtro hardware (5 ms) */
-    pcnt_set_filter_value(PCNT_UNIT, 5000);
+    pcnt_set_filter_value(PCNT_UNIT, 1023);
     pcnt_filter_enable(PCNT_UNIT);
 
     pcnt_counter_pause(PCNT_UNIT);
