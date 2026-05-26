@@ -2,7 +2,7 @@
     Copyright (C) 2025 The Sistemas Empotrados subject at UPV
     
     @file    lcd_i2c.h
-    @author  Angel Perles / Modificado por Estudiante
+    @author  Grupo PCNT
     @version V0.4
     @date    2026-05-26
     @brief   Controlador para la pantalla LCD mediante bus I2C
